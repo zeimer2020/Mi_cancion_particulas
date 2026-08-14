@@ -6,7 +6,7 @@ No se espera que memorices Three.js, TSL o WebGPU. Sí debes poder:
 
 1. Explicar dónde vive el estado de las partículas;
 2. Localizar las fuerzas y relacionarlas con ecuaciones;
-3. Predecir qué debería ocurrir al aislar una fuerza;
+3. Predecir qué debería ocurrir al aislar una fuerza;a
 4. Usar predicciones y observaciones para detectar una implementación incorrecta;
 5. Modificar deliberadamente el sistema con ayuda de IA;
 6. Desplegar una URL funcional;
