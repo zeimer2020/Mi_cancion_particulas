@@ -1,51 +1,30 @@
-# Validación y depuración
+# Verificación del instrumento
 
-## Regla principal
+Ejecuta `npm test` para comprobar:
 
-No uses «se ve bien» como evidencia de corrección. Una prueba debe declarar una propiedad observable antes de ejecutar el sistema.
+- Los cuatro entornos mantienen posiciones finitas y velocidades dentro del límite durante gestos sostenidos.
+- Cambiar de preset conserva las posiciones hasta que cada agente calcula su respuesta.
+- El puntero, Vínculo y Suspender tienen consecuencias en la trayectoria.
+- Los agentes depositan rastro químico acotado y R lo elimina.
+- Un delta cero no mueve agentes; los campos producen direcciones normalizadas sin audio ni reloj.
 
-## Matriz mínima
+`npm run build` verifica la compilación de producción. `npm run preview` sirve ese resultado para comprobar las rutas de recursos con `base: './'`.
 
-| Prueba | Fuerzas activas | Condición inicial | Predicción |
-|---|---|---|---|
-| Inercia | ninguna | velocidad ≠ 0 | movimiento sin aceleración deliberada |
-| +X | viento | velocidad = 0 | `v.x` crece positiva |
-| Atracción | radial + | velocidad = 0 | aceleración hacia atractor |
-| Repulsión | radial - | velocidad = 0 | aceleración alejándose |
-| Vórtice | radial suave + tangencial | velocidad = 0 | aparece giro, no solo caída radial |
+## Prueba de presentación
 
-## Errores típicos generados por IA
+1. Prueba los cuatro pads y los tres faders. La simulación debe responder sin saltar inmediatamente a una forma nueva.
+2. Mantén y suelta W/E; pulsa Q una vez. Al salir de la pestaña o abrir un diálogo ningún gesto debe quedar pegado.
+3. Arrastra y luego mantén Mayús. Prueba el botón derecho para orbitar.
+4. Abre Música. Conecta YouTube y pulsa Reproducir; puede necesitar otro clic por las políticas del navegador. Prueba también un archivo local.
+5. Cierra Música y comprueba que puedes seguir tocando. M controla el transporte; P solo la imagen.
+6. En Partitura, marca una entrada con audio conectado, cierra y vuelve a abrir. Exporta el JSON. Ninguna entrada debe provocar un preset por sí sola.
+7. F abre pantalla completa; H oculta controles. H o Escape permiten volver.
+8. Prueba el ancho de teléfono y el escritorio. La consola debe seguir accesible.
 
-### Actualizar partículas en JavaScript
+## Rendimiento y diagnóstico
 
-Síntoma: `for (...) position[i] ...` por frame. Esto elimina el propósito del compute masivo.
+Se usan pasos fijos de 1/60 s y máximo dos pasos por frame para evitar recuperaciones largas al volver a una pestaña. No se acumula el tiempo de ausencia. La calidad ligera tiene 4.500 agentes; equilibrada, 9.000; densa, 16.000. Elegir calidad reinicia agentes y memoria; hazlo antes de presentar.
 
-### Confundir render shader con compute
+Si el rendimiento cae de forma sostenida, el instrumento sugiere calidad ligera sin cambiar el estado automáticamente. Activa aceleración gráfica y cierra tareas pesadas. Si se pierde el contexto WebGL, aparece un aviso para recargar. La consola del navegador permite distinguir errores de GPU de restricciones de YouTube.
 
-Síntoma: el material altera visualmente vértices, pero el estado físico real no cambia. Pregunta: ¿La posición futura queda escrita en storage?
-
-### Singularidad radial
-
-Síntoma: las partículas explotan al acercarse al atractor. Revisa división por distancia y `softening`.
-
-### dt demasiado grande
-
-Síntoma: sistema errático al cambiar de equipo o velocidad. Mantén inicialmente paso fijo y luego experimenta conscientemente.
-
-### Demasiados parámetros
-
-Síntoma: instrumento imposible de tocar. Separa parámetros de calibración y controles de performance.
-
-### Publicación rota
-
-Síntoma: local funciona, GitHub Pages queda negro o con 404. Abre DevTools → Network/Console; verifica rutas de assets y que el workflow haya terminado correctamente.
-
-## Checklist de entrega técnica
-
-- `npm run build` pasa.
-- `npm run preview` reproduce la obra.
-- URL pública abre en una ventana incógnita.
-- consola sin errores críticos.
-- LAB permite aislar fuerzas.
-- PERFORMANCE no requiere la interfaz de desarrollo.
-- Puedes explicar estado, fuerzas, integración, render y controles.
+YouTube puede introducir anuncios, pedir interacción o bloquear el iframe. El MP3 incluido y la carga local evitan esa dependencia. Un fallo de música no detiene la simulación. `public/audio/not-ok.mp3` contiene la canción elegida y se copia al build de producción.

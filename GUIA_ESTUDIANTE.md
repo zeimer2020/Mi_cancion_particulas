@@ -1,77 +1,51 @@
-# Guía del estudiante
+# Cómo explicar NOT / OK
 
-## ¿Qué debes ser capaz de hacer?
+## Estado y percepción
 
-No se espera que memorices Three.js, TSL o WebGPU. Sí debes poder:
+Cada agente tiene posición y velocidad tridimensionales. Lee su propia velocidad, una dirección del campo en su ubicación, hasta 24 vecinos locales y tres sensores de rastro en XY. No conoce la canción, la partitura, el conjunto completo de agentes ni su futuro.
 
-1. Explicar dónde vive el estado de las partículas;
-2. Localizar las fuerzas y relacionarlas con ecuaciones;
-3. Predecir qué debería ocurrir al aislar una fuerza;a
-4. Usar predicciones y observaciones para detectar una implementación incorrecta;
-5. Modificar deliberadamente el sistema con ayuda de IA;
-6. Desplegar una URL funcional;
-7. Convertir parámetros del sistema en controles expresivos para una interpretación en vivo.
+La cuadrícula espacial limita la búsqueda: se revisan como máximo 72 candidatos en nueve celdas, con un radio de 0,45–0,87 unidades y distancia 3D. En regiones muy densas esto es una aproximación local acotada, no un cálculo exhaustivo de todos los vecinos.
 
-## Modelo mental
+Los sensores Physarum están entre 0,28 y 0,86 unidades delante del agente. Se compara el frente con muestras a izquierda y derecha (ángulo 0,42–1,07 radianes). Si el frente pierde, se orienta hacia el lado con más rastro; empates laterales se resuelven aleatoriamente. La decisión se convierte en steering y se combina con las demás reglas.
+
+## Acción
 
 ```text
-CONTROLES DEL INTÉRPRETE
-        ↓
-PARÁMETROS / UNIFORMS
-        ↓
-COMPUTE EN GPU
-estado → fuerzas → aceleración → velocidad → posición
-        ↓
-BUFFERS DE POSICIÓN Y VELOCIDAD
-        ↓
-RENDER
-material + instancias + cámara → pantalla
+vecinos cercanos → separación + alineación + cohesión
+campo en la posición → dirección deseada
+tres sensores → dirección hacia el rastro
+gestos humanos → objetivos de llegada o huida
+                      ↓
+       velocidad deseada − velocidad actual
+                      ↓
+            combinar y limitar steering
+                      ↓
+       velocidad nueva limitada → posición nueva
+                      ↓
+         depósito → difusión → evaporación
 ```
 
-### CPU y GPU
+Todos leen el estado anterior y escriben en buffers distintos. Después se intercambian los buffers. Así, el orden de actualización no permite a unos agentes conocer decisiones nuevas que otros aún no han tomado.
 
-JavaScript organiza la aplicación y modifica parámetros. La actualización masiva de partículas ocurre en GPU. El compute pass ejecuta conceptualmente la misma regla para muchas partículas en paralelo.
+La fuerza de steering combinada está limitada a 2,1–14,1 unidades/s²; la velocidad, a 0,9–5,6 unidades/s. Son límites comunes controlados por Tensión. Los bordes se evitan con steering, sin rebotes ni aparición de agentes nuevos. La cámara muestra profundidad; el rastro químico permanece en un plano.
 
-### TSL
+## Qué aporta la combinación
 
-TSL es la capa de Three.js con la que expresamos operaciones que Three.js convierte al shader apropiado. No necesitas escribir WGSL directamente en esta unidad.
+- **Campo:** organiza rutas y vórtices. Un campo no mueve partículas por sí mismo: `sampleFlow` entrega una dirección y `addSteering` calcula cómo aproximarse a esa velocidad.
+- **Flocking:** la separación evita aglomeración extrema, la alineación comparte orientación y la cohesión reúne grupos cercanos. No se busca un centro global salvo cuando el intérprete mantiene W.
+- **Physarum:** el entorno recuerda dónde pasaron los agentes. Cada agente deposita; otros leen ese depósito; la realimentación produce caminos compartidos. El mapa usa difusión local y evaporación exponencial. El acotamiento a 12 evita valores sin límite.
+- **Steering interactivo:** el puntero, W y Q transforman los objetivos comunes. La respuesta permanece limitada y calculada por cada agente.
 
-## Cinco exploraciones antes de diseñar
+La estela de pantalla es una acumulación gráfica independiente del mapa químico. Memoria controla ambas permanencias para relacionar lo que se ve con lo que perciben los agentes, pero borrar solo el framebuffer no elimina el rastro que leen. R sí borra ambos y reinicia agentes.
 
-En modo LAB usa `1..5` y registra la predicción y la observación:
+## Explorar durante el ensayo
 
-1. **Inercia:** sin fuerzas, una partícula que ya se mueve conserva aproximadamente su movimiento.
-2. **Fuerza constante +X:** partiendo con velocidad cero, la velocidad X debe crecer y las partículas deben desplazarse hacia +X.
-3. **Atracción:** la aceleración debe apuntar hacia el atractor.
-4. **Repulsión:** al invertir el signo de la fuerza radial, el comportamiento debe invertirse.
-5. **Vórtice:** una fuerza tangencial debe introducir giro; no debe equivaler a atracción radial.
+1. Mantén Latente y baja Vínculo: observa cómo disminuye la organización vecinal.
+2. Cambia a Corriente sin reiniciar: distingue el entorno cambiado de la adaptación progresiva de los agentes.
+3. Pasa a Huella y sube Memoria: busca caminos reforzados por el rastro anterior.
+4. Mantén W, suelta y observa el retraso. El gesto no fija posiciones.
+5. Marca Q una vez. La huida temporal modifica velocidad mediante steering; no aplica un impulso balístico.
 
-No aceptes como evidencia «se ve interesante». Formula primero una predicción.
+## Control humano
 
-## Cómo trabajar con IA
-
-No pidas: «hazme una obra de partículas».
-
-Trabaja así:
-
-1. Define la intención;
-2. Formula o selecciona una fuerza;
-3. Explica a la IA la arquitectura existente;
-4. Pide una modificación localizada;
-5. Exige que preserve `estado → fuerzas → integración → render`;
-6. Ejecuta una exploración aislada;
-7. Solo después integra la fuerza al instrumento.
-
-Un buen prompt incluye: archivo a modificar, ecuación o comportamiento deseado, parámetros que deben ser uniforms, prueba esperada y restricciones que no deben tocarse.
-
-## Criterio de dominio
-
-Debes poder señalar en el proyecto:
-
-- **estado:** `positionBuffer`, `velocityBuffer`;
-- **fuerzas:** bloque `force` de `createSimulation.js`;
-- **integración:** actualización de `v` y `p`;
-- **render:** `SpriteNodeMaterial` + `InstancedMesh`;
-- **controles:** panel y mapeo de teclado/puntero.
-
-Si una modificación de IA no puedes ubicarla en este mapa, aún no está bajo tu control.
+`src/audio/player.js` solo reproduce y ofrece un reloj a la interfaz. `createSimulation.js` no importa audio. El score almacena tiempos para recordar entradas y no tiene scheduler. Las transiciones de estado solo ocurren al pulsar un pad, 1–4 o «Tocar…» en la partitura. La emergencia es autónoma; la conducción expresiva es humana.

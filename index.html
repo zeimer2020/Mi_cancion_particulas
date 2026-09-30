@@ -3,11 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <title>U3 · Forces Instrument</title>
+    <meta name="theme-color" content="#080607" />
+    <meta name="description" content="Instrumento visual de agentes autónomos para interpretar NOT OK con las manos, la escucha y tus decisiones." />
+    <title>NOT / OK — Instrumento visual</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23080607'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%23f14132' stroke-width='3' stroke-dasharray='2 5'/%3E%3C/svg%3E" />
   </head>
   <body>
-    <div id="app"></div>
+    <main id="app" aria-label="Instrumento visual NOT OK"></main>
+    <div id="interface"></div>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <noscript>Activa JavaScript para tocar este instrumento.</noscript>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
