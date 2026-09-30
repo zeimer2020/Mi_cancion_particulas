@@ -1,30 +1,41 @@
-# Verificación del instrumento
+# Verificación de Muro de choque
 
-Ejecuta `npm test` para comprobar:
+`npm test` ejecuta catorce pruebas de simulación y gestos:
 
-- Los cuatro entornos mantienen posiciones finitas y velocidades dentro del límite durante gestos sostenidos.
-- Cambiar de preset conserva las posiciones hasta que cada agente calcula su respuesta.
-- El puntero, Vínculo y Suspender tienen consecuencias en la trayectoria.
-- Los agentes depositan rastro químico acotado y R lo elimina.
-- Un delta cero no mueve agentes; los campos producen direcciones normalizadas sin audio ni reloj.
+- Los cuatro estados mantienen posiciones finitas y respetan límites de velocidad con gestos sostenidos.
+- Cambiar de entorno conserva agentes y posiciones hasta que calculan su respuesta.
+- Puntero, Vínculo y Vacío alteran las trayectorias.
+- Un delta cero conserva posiciones; reiniciar elimina memoria química.
+- Los campos describen direcciones normalizadas sin audio ni reloj musical.
+- Ráfagas repetidas y arrastres rápidos respetan los límites temporales.
+- Un golpe produce desplazamiento físico mayor que el movimiento de reposo, sin teletransportar.
+- W comprime el ancho del muro y soltar recupera un volumen amplio.
+- Una descarga sin carga no produce un golpe automático; el golpe localizado usa la posición de la mano.
+- V mueve el volumen entero con inversiones repetidas de dirección y amplitud perceptible, respeta los límites y no activa el acento luminoso. Al soltar recupera los límites normales.
+- En reposo, la mayoría de agentes recorren regiones amplias con cambios graduales de dirección. El estado anterior para interpolación coincide con el paso previo real y se limpia correctamente al reiniciar.
+- Los intervalos de pulsaciones humanas cambian las duraciones, sin retrasar el ataque ni programar golpes al dejar de tocar. Una frase nueva puede fijar otro pulso.
+- Una carga de aproximadamente un pulso compacta el volumen; soltar una carga corta produce menos fuerza que soltar una completa.
+- Q alterna físicamente el ataque lateral; un clic conserva su origen localizado después de soltar el ratón.
 
-`npm run build` verifica la compilación de producción. `npm run preview` sirve ese resultado para comprobar las rutas de recursos con `base: './'`.
+`npm run build` verifica producción. `npm run preview` permite revisar el MP3 y las rutas relativas del resultado.
 
-## Prueba de presentación
+## Ensayo en navegador
 
-1. Prueba los cuatro pads y los tres faders. La simulación debe responder sin saltar inmediatamente a una forma nueva.
-2. Mantén y suelta W/E; pulsa Q una vez. Al salir de la pestaña o abrir un diálogo ningún gesto debe quedar pegado.
-3. Arrastra y luego mantén Mayús. Prueba el botón derecho para orbitar.
-4. Abre Música. Conecta YouTube y pulsa Reproducir; puede necesitar otro clic por las políticas del navegador. Prueba también un archivo local.
-5. Cierra Música y comprueba que puedes seguir tocando. M controla el transporte; P solo la imagen.
-6. En Partitura, marca una entrada con audio conectado, cierra y vuelve a abrir. Exporta el JSON. Ninguna entrada debe provocar un preset por sí sola.
-7. F abre pantalla completa; H oculta controles. H o Escape permiten volver.
-8. Prueba el ancho de teléfono y el escritorio. La consola debe seguir accesible.
+1. M inicia la canción. P oculta/muestra controles; el botón pequeño funciona en ambas vistas.
+2. Q produce un golpe; mantener Espacio muestra HEY instantáneamente detrás de los agentes. Soltar elimina la palabra sin rastro, también con Memoria alta y con B pausado. La música sigue independiente.
+3. Mantén W al menos un segundo y suelta: debe verse compresión y descarga. Perder foco o abrir un diálogo cancela la carga, sin lanzar materia accidentalmente.
+4. E corta la luz y ralentiza la simulación; soltarlo recupera el escenario. No debe quedar un gesto pegado.
+5. Clic breve golpea desde la mano. Arrastra para conducir y usa Mayús para abrir una grieta. El botón derecho cambia la vista.
+6. Prueba 1–4 y los faders sin reiniciar; los agentes se adaptan progresivamente.
+7. Mantén V o el botón Vibrar: todo el volumen tiembla, con el color conservado. Soltar o perder foco cancela el gesto. R y el botón Reiniciar funcionan sin aviso.
+8. F presenta en pantalla completa. Comprueba los controles compactos en un ancho pequeño: no hay botones ni diálogos de Partitura o Cómo tocar. El deslizador Partículas muestra la cifra al moverlo y aplica al soltar; verifica mínimos, máximos y vuelta a 4.500. P y Espacio funcionan con el control enfocado. Abrir Música o perder foco retira HEY y los gestos sostenidos.
+9. Deja Riff recorrer la pantalla: las curvas deben ser continuas y los puntos deben formar corrientes. Prueba Q y la descarga de W con alta densidad: el acento debe conservar tonos rojos, sin una nube blanca. La imagen se interpola entre pasos fijos.
+10. Marca tres o cuatro Q a un ritmo regular. Pulso manual debe reflejar tus intervalos; W carga más rápido con un pulso rápido y V toma sus subdivisiones. Deja de tocar: no debe aparecer ningún golpe nuevo. Espacio sigue mostrando HEY exclusivamente mientras se sostiene.
 
-## Rendimiento y diagnóstico
+## Límites prácticos
 
-Se usan pasos fijos de 1/60 s y máximo dos pasos por frame para evitar recuperaciones largas al volver a una pestaña. No se acumula el tiempo de ausencia. La calidad ligera tiene 4.500 agentes; equilibrada, 9.000; densa, 16.000. Elegir calidad reinicia agentes y memoria; hazlo antes de presentar.
+Se usan pasos fijos de 1/60 s y máximo dos pasos por frame. La cantidad inicial es de 4.500 agentes; el deslizador admite de 1.000 a 20.000 en pasos de 500. Cambiar cantidad reinicia agentes y rastro silenciosamente; elige antes de presentar. El sistema nunca cambia cantidad por sí solo.
 
-Si el rendimiento cae de forma sostenida, el instrumento sugiere calidad ligera sin cambiar el estado automáticamente. Activa aceleración gráfica y cierra tareas pesadas. Si se pierde el contexto WebGL, aparece un aviso para recargar. La consola del navegador permite distinguir errores de GPU de restricciones de YouTube.
+Physarum se calcula en XY aunque los agentes y vecinos tienen profundidad. La búsqueda de vecinos está acotada a 72 inspecciones y 24 vecinos por agente. Los puntos se dibujan como fragmentos con la dirección de su velocidad, con mezcla normal y exposición que conserva su tono. Un acento fuerte modifica ligeramente la luz roja durante un intervalo corto y exclusivamente por un gesto humano.
 
-YouTube puede introducir anuncios, pedir interacción o bloquear el iframe. El MP3 incluido y la carga local evitan esa dependencia. Un fallo de música no detiene la simulación. `public/audio/not-ok.mp3` contiene la canción elegida y se copia al build de producción.
+El MP3 es local y no alimenta las reglas. Si la GPU pierde contexto, aparece un aviso para recargar. Revisa la consola para errores de WebGL o de carga del archivo. La compilación puede avisar del tamaño de Three.js; no es un fallo de ejecución.

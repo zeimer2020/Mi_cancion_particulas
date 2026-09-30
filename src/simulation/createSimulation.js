@@ -1,4 +1,4 @@
-import { clamp } from './parameters.js';
+import { clamp, motionLimits } from './parameters.js';
 import { sampleFlow } from './flowField.js';
 
 const WIDTH = 32, HEIGHT = 20;
@@ -10,28 +10,33 @@ export function createSimulation({ params, count = 9000, random = Math.random })
   // All decisions use the previous state. Write into separate buffers, then swap.
   let positions = new Float32Array(count * 3), velocities = new Float32Array(count * 3);
   let nextPositions = new Float32Array(count * 3), nextVelocities = new Float32Array(count * 3);
+  const steering = new Float32Array(count * 3);
   const activity = new Float32Array(count);
+  const homes = new Float32Array(count * 3), wander = new Float32Array(count);
   const heads = new Int32Array(COLS * ROWS), links = new Int32Array(count);
   let trail = new Float32Array(MAP_W * MAP_H), nextTrail = new Float32Array(trail.length);
   const deposit = new Float32Array(trail.length);
   const flow = new Float32Array(2);
-  let tick = 0;
+  let tick = 0, vibrationPhase = 0;
 
   function reset() {
-    trail.fill(0); nextTrail.fill(0); deposit.fill(0);
+    trail.fill(0); nextTrail.fill(0); deposit.fill(0); steering.fill(0);
     for (let i = 0; i < count; i++) {
-      const k = i * 3, angle = random() * TAU;
-      const radius = 2.2 + Math.sqrt(random()) * 5;
-      positions[k] = Math.cos(angle) * radius * 1.35;
-      positions[k + 1] = Math.sin(angle) * radius * 0.74;
-      positions[k + 2] = (random() - 0.5) * 1.4;
+      const k = i * 3;
+      // A wide starting volume. Homes are targets for a charged release,
+      // while resting agents are free to travel through the flow field.
+      positions[k] = homes[k] = (random() - 0.5) * 29;
+      positions[k + 1] = homes[k + 1] = (random() - 0.5) * 17;
+      positions[k + 2] = homes[k + 2] = (random() - 0.5) * 5;
+      wander[i] = random() * TAU;
       sampleFlow(positions[k], positions[k + 1], params.field, params.tension, flow);
-      velocities[k] = flow[0] * 1.2;
-      velocities[k + 1] = flow[1] * 1.2;
+      velocities[k] = flow[0] * 6;
+      velocities[k + 1] = flow[1] * 6;
       velocities[k + 2] = 0;
       activity[i] = random() * 0.4;
     }
-    tick = 0;
+    nextPositions.set(positions); nextVelocities.set(velocities);
+    tick = 0; vibrationPhase = 0; params.charge = 0; params.pulse = 0; params.rebound = 0; params.spreadBurst = false; params.localHit = false;
   }
 
   function sampleTrail(x, y) {
@@ -46,14 +51,21 @@ export function createSimulation({ params, count = 9000, random = Math.random })
   }
 
   function step(delta) {
-    const dt = clamp(delta, 0, 1 / 30) * (params.suspend ? 0.16 : 1);
+    const dt = clamp(delta, 0, 1 / 30) * (params.suspend ? 0.045 : 1);
     if (dt === 0) return;
     const tension = clamp(params.tension, 0, 1), bond = clamp(params.bond, 0, 1);
     const memory = clamp(params.memory, 0, 1);
-    const maxSpeed = 0.9 + tension * 4.7, maxForce = 2.1 + tension * 12;
+    const limits = motionLimits(params), maxSpeed = limits.speed, maxForce = limits.force;
     const perception = 0.45 + bond * 0.42, radius2 = perception * perception;
     const sensorDistance = 0.28 + memory * 0.58, sensorAngle = 0.42 + tension * 0.65;
-    const chemWeight = (params.field === 3 ? 1.9 : 0.14) + memory * 0.6;
+    const chemWeight = params.field === 3 ? 2.1 + memory * 0.32 : 0.025 + memory * 0.09;
+    const responding = params.gather || params.pointer.active || params.pulse > 0.015 || params.rebound > 0.1;
+    const response = 1 - Math.exp(-dt * (params.vibrate ? 90 : responding ? 65 : 8));
+    vibrationPhase = params.vibrate ? vibrationPhase + dt * TAU * clamp(2 / params.rhythm.beatSeconds,2,9) : 0;
+    // The hand opens an oscillating flow. Agents steer into it and reverse
+    // their velocities; this never translates a camera or writes positions.
+    const vibrationX = Math.sin(vibrationPhase), vibrationY = Math.cos(vibrationPhase) * 0.45;
+    params.charge = params.gather ? Math.min(1,params.charge + dt / (params.rhythm.beatSeconds * 0.85)) : Math.max(0,params.charge - dt * 3);
     heads.fill(-1); deposit.fill(0);
     for (let i = 0; i < count; i++) {
       const k = i * 3;
@@ -108,12 +120,19 @@ export function createSimulation({ params, count = 9000, random = Math.random })
       };
       sampleFlow(x, y, params.field, tension, flow);
       // Third dimension is a flow direction, not a forced position animation.
-      const flowZ = (Math.sin(x * 0.36) * Math.cos(y * 0.42) * (0.7 + tension * 1.3) - z) * 0.55;
-      addSteering(flow[0], flow[1], flowZ, params.field === 3 ? 0.25 : 0.85);
+      const flowZ = (Math.sin(x * 0.36) * Math.cos(y * 0.42) * (params.field === 1 ? 5 : 2.2) - z) * 0.55;
+      addSteering(flow[0], flow[1], flowZ * 0.3, params.field === 3 ? 0.16 : 3.1);
+      // Reynolds wander adds local uncertainty. It is an agent decision, not
+      // a changing music score or a preprogrammed animation of its position.
+      wander[i] += (random() - 0.5) * dt * (1.5 + tension * 4);
+      addSteering(Math.cos(wander[i]),Math.sin(wander[i]),Math.sin(wander[i] * 1.3) * 0.15,params.field === 3 ? 0.12 : 0.09 + tension * 0.08);
+      const hx = homes[k] - x, hy = homes[k + 1] - y, hz = homes[k + 2] - z;
+      if (!params.gather) addSteering(0,0,hz,0.12,true);
+      if (!params.gather && params.pulse < 0.18 && params.rebound > 0.02) addSteering(hx,hy,hz,params.rebound * 8,true);
       if (neighbors) {
-        addSteering(avx / neighbors, avy / neighbors, avz / neighbors, bond * 1.15);
-        addSteering(px / neighbors - x, py / neighbors - y, pz / neighbors - z, bond * 0.9, true);
-        addSteering(sx, sy, sz, 0.52 + (1 - bond) * 0.9);
+        addSteering(avx / neighbors, avy / neighbors, avz / neighbors, bond * 1.3);
+        addSteering(px / neighbors - x, py / neighbors - y, pz / neighbors - z, bond * 0.38, true);
+        addSteering(sx, sy, sz, 0.3 + (1 - bond) * 0.22);
       }
       // Physarum: forward / left / right sensors and finite turning angle.
       const heading = Math.atan2(vy, vx);
@@ -126,30 +145,48 @@ export function createSimulation({ params, count = 9000, random = Math.random })
       }
       const sensedHeading = heading + turn * (0.14 + tension * 0.26);
       addSteering(Math.cos(sensedHeading), Math.sin(sensedHeading), 0, chemWeight);
-      if (params.gather) addSteering(-x, -y, -z, 2.6, true);
+      if (params.gather) {
+        const lane = ((i * 0.61803398875) % 1) - 0.5;
+        addSteering(lane * 0.16 - x,homes[k + 1] * 0.42 - y,lane * 0.3 - z,26,true);
+      }
       if (params.pointer.active) {
         const dx = params.pointer.x - x, dy = params.pointer.y - y, d = Math.hypot(dx, dy);
-        const influence = Math.max(0, 1 - d / 7);
+        const influence = Math.max(0, 1 - d / 9);
         const sign = params.pointer.repel ? -1 : 1;
-        addSteering(dx * sign, dy * sign, -z * (sign > 0 ? 1 : 0), influence * 4.5, sign > 0);
+        addSteering(dx * sign, dy * sign, -z * (sign > 0 ? 1 : 0), influence * 13, sign > 0);
+        // The moving hand describes a local direction: agents can ride the stroke.
+        if (!params.pointer.repel) addSteering(params.pointer.vx,params.pointer.vy,Math.sin(i * 1.7) * 2,influence * 4);
       }
       if (params.pulse > 0) {
-        const dx = x - params.pulseX, dy = y - params.pulseY;
-        const d = Math.hypot(dx, dy);
-        addSteering(dx, dy, z * 0.6, params.pulse * Math.max(0, 1 - d / 14) * 4.5);
+        const seedAngle = ((i * 0.61803398875) % 1) * TAU;
+        const local = params.localHit;
+        const dx = params.spreadBurst ? hx * 1.8 : local ? x - params.pulseX + Math.cos(seedAngle) * 2.5 : params.hitDirection * 6;
+        const dy = params.spreadBurst ? hy : local ? y - params.pulseY + Math.sin(seedAngle) * 2.5 : homes[k + 1] * 0.12 - y;
+        const dz = params.spreadBurst ? hz * 1.6 : Math.sin(seedAngle * 3) * 3.5;
+        addSteering(dx,dy,dz,params.pulse * 26);
       }
+      if (params.vibrate) addSteering(vibrationX,vibrationY,Math.sin(vibrationPhase * 0.5) * 0.08,80);
       // Boundary avoidance is also steering. No bouncing, teleporting, or respawn.
-      if (Math.abs(x) > WIDTH / 2 - 2) addSteering(-Math.sign(x), 0, 0, (Math.abs(x) - WIDTH / 2 + 2) * 2);
-      if (Math.abs(y) > HEIGHT / 2 - 2) addSteering(0, -Math.sign(y), 0, (Math.abs(y) - HEIGHT / 2 + 2) * 2);
-      if (Math.abs(z) > 3) addSteering(0, 0, -Math.sign(z), 2);
+      if (Math.abs(x) > WIDTH / 2 - 2) addSteering(-Math.sign(x), 0, 0, (Math.abs(x) - WIDTH / 2 + 2) * 14);
+      if (Math.abs(y) > HEIGHT / 2 - 2) addSteering(0, -Math.sign(y), 0, (Math.abs(y) - HEIGHT / 2 + 2) * 14);
+      if (Math.abs(z) > 5) addSteering(0, 0, -Math.sign(z), (Math.abs(z) - 5) * 18);
       const force = Math.hypot(ax, ay, az);
       if (force > maxForce) { const s = maxForce / force; ax *= s; ay *= s; az *= s; }
+      // Ease the steering response, rather than teleporting or smoothing positions.
+      // Human hits and vibration retain a fast attack; resting turns have inertia.
+      ax = steering[k] + (ax - steering[k]) * response;
+      ay = steering[k + 1] + (ay - steering[k + 1]) * response;
+      az = steering[k + 2] + (az - steering[k + 2]) * response;
+      const easedForce = Math.hypot(ax,ay,az);
+      if (easedForce > maxForce) { const s = maxForce / easedForce; ax *= s; ay *= s; az *= s; }
+      steering[k] = ax; steering[k + 1] = ay; steering[k + 2] = az;
       let nvx = vx + ax * dt, nvy = vy + ay * dt, nvz = vz + az * dt;
       const speed = Math.hypot(nvx, nvy, nvz);
       if (speed > maxSpeed) { const s = maxSpeed / speed; nvx *= s; nvy *= s; nvz *= s; }
       nextVelocities[k] = nvx; nextVelocities[k + 1] = nvy; nextVelocities[k + 2] = nvz;
       nextPositions[k] = x + nvx * dt; nextPositions[k + 1] = y + nvy * dt; nextPositions[k + 2] = z + nvz * dt;
-      activity[i] = clamp(force / maxForce * 0.7 + neighbors / 24 * 0.3, 0, 1);
+      const targetActivity = clamp(easedForce / maxForce * 0.65 + speed / maxSpeed * 0.2 + neighbors / 24 * 0.15, 0, 1);
+      activity[i] += (targetActivity - activity[i]) * (1 - Math.exp(-dt * 7));
       const tx = clamp(Math.floor((nextPositions[k] / WIDTH + 0.5) * MAP_W), 0, MAP_W - 1);
       const ty = clamp(Math.floor((nextPositions[k + 1] / HEIGHT + 0.5) * MAP_H), 0, MAP_H - 1);
       deposit[ty * MAP_W + tx] += dt * 1.6;
@@ -169,7 +206,8 @@ export function createSimulation({ params, count = 9000, random = Math.random })
       }
     }
     [trail, nextTrail] = [nextTrail, trail];
-    params.pulse = Math.max(0, params.pulse - dt * 1.7);
+    params.pulse = Math.max(0, params.pulse - dt / params.pulseDuration);
+    if (params.pulse < 0.18) params.rebound = Math.max(0,params.rebound - dt / (params.rhythm.beatSeconds * 0.65));
     tick++;
   }
 
@@ -177,6 +215,7 @@ export function createSimulation({ params, count = 9000, random = Math.random })
   return {
     count, step, reset,
     get positions() { return positions; }, get velocities() { return velocities; },
+    get previousPositions() { return nextPositions; },
     get activity() { return activity; }, get trail() { return trail; },
     sampleTrail, bounds: { width: WIDTH, height: HEIGHT },
   };

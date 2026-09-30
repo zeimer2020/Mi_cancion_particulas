@@ -1,51 +1,56 @@
-# Cómo explicar NOT / OK
+# Cómo explicar Muro de choque
 
-## Estado y percepción
+## Qué percibe y recuerda un agente
 
-Cada agente tiene posición y velocidad tridimensionales. Lee su propia velocidad, una dirección del campo en su ubicación, hasta 24 vecinos locales y tres sensores de rastro en XY. No conoce la canción, la partitura, el conjunto completo de agentes ni su futuro.
+Tiene posición y velocidad 3D, una orientación de wander y una región de origen dentro del muro. Percibe hasta 24 vecinos a 0,45–0,87 unidades, la dirección del campo en su posición y tres muestras de rastro químico en XY. El radio local depende de Vínculo. Los sensores químicos se adelantan 0,28–0,86 unidades; su apertura depende de Tensión.
 
-La cuadrícula espacial limita la búsqueda: se revisan como máximo 72 candidatos en nueve celdas, con un radio de 0,45–0,87 unidades y distancia 3D. En regiones muy densas esto es una aproximación local acotada, no un cálculo exhaustivo de todos los vecinos.
+No conoce la canción, la partitura ni el estado completo del enjambre. Recibe las condiciones comunes que tú cambias: campo, parámetros, puntero, columna de carga, golpe, vacío o dirección de vibración.
 
-Los sensores Physarum están entre 0,28 y 0,86 unidades delante del agente. Se compara el frente con muestras a izquierda y derecha (ángulo 0,42–1,07 radianes). Si el frente pierde, se orienta hacia el lado con más rastro; empates laterales se resuelven aleatoriamente. La decisión se convierte en steering y se combina con las demás reglas.
-
-## Acción
+## Cómo calcula su acción
 
 ```text
-vecinos cercanos → separación + alineación + cohesión
-campo en la posición → dirección deseada
-tres sensores → dirección hacia el rastro
-gestos humanos → objetivos de llegada o huida
-                      ↓
-       velocidad deseada − velocidad actual
-                      ↓
-            combinar y limitar steering
-                      ↓
-       velocidad nueva limitada → posición nueva
-                      ↓
-         depósito → difusión → evaporación
+campo local + wander + vecinos + sensores + objetivos del gesto
+                           ↓
+            velocidades deseadas − velocidad actual
+                           ↓
+            suma ponderada y límite de fuerza
+                           ↓
+            integración y límite de velocidad
+                           ↓
+             nueva posición + depósito de rastro
 ```
 
-Todos leen el estado anterior y escriben en buffers distintos. Después se intercambian los buffers. Así, el orden de actualización no permite a unos agentes conocer decisiones nuevas que otros aún no han tomado.
+Wander perturba suavemente la orientación con una variación acotada; no es una secuencia musical. En reposo domina un campo de corrientes largas y los agentes recorren la pantalla sin una correa hacia su origen. Ese origen se utiliza durante la descarga de W para abrir de nuevo el volumen. Los bordes se evitan mediante steering.
 
-La fuerza de steering combinada está limitada a 2,1–14,1 unidades/s²; la velocidad, a 0,9–5,6 unidades/s. Son límites comunes controlados por Tensión. Los bordes se evitan con steering, sin rebotes ni aparición de agentes nuevos. La cámara muestra profundidad; el rastro químico permanece en un plano.
+La velocidad base es `2,5 + 11,5 × Tensión`, y la fuerza base, `12 + 32 × Tensión`. El golpe, la carga, el puntero y la vibración amplían temporalmente estos límites. La fuerza de steering cambia gradualmente en reposo y responde más rápido a los gestos. La fuerza total y la velocidad se limitan en cada paso; también se evita salir del espacio mediante steering, sin rebotes ni teletransporte. El bucle integra pasos de 1/60 s y limita el trabajo acumulado. El renderer interpola entre los dos últimos estados para dibujar movimiento continuo sin alterar la simulación.
 
-## Qué aporta la combinación
+## Qué aporta cada regla
 
-- **Campo:** organiza rutas y vórtices. Un campo no mueve partículas por sí mismo: `sampleFlow` entrega una dirección y `addSteering` calcula cómo aproximarse a esa velocidad.
-- **Flocking:** la separación evita aglomeración extrema, la alineación comparte orientación y la cohesión reúne grupos cercanos. No se busca un centro global salvo cuando el intérprete mantiene W.
-- **Physarum:** el entorno recuerda dónde pasaron los agentes. Cada agente deposita; otros leen ese depósito; la realimentación produce caminos compartidos. El mapa usa difusión local y evaporación exponencial. El acotamiento a 12 evita valores sin límite.
-- **Steering interactivo:** el puntero, W y Q transforman los objetivos comunes. La respuesta permanece limitada y calculada por cada agente.
+- **Steering:** llegada reúne en la columna; Q propone una banda compacta y alterna el ataque lateral, con retorno breve hacia el origen; huida produce el golpe localizado y el desgarro. Wander introduce incertidumbre local. La mano propone una dirección, cada agente calcula cómo seguirla.
+- **Flow fields:** mapas estáticos de direcciones producen pliegues, carriles y contrastes locales. Cambiar el mapa no mueve directamente las posiciones.
+- **Flocking:** separación impide amontonamientos; alineación produce fragmentos compartidos; cohesión mantiene vínculos locales. Vínculo cambia su alcance y peso.
+- **Physarum:** sensores frontal, izquierdo y derecho comparan materia depositada. Cada agente deja un rastro que se difunde y evapora; los siguientes recorridos dependen de acciones anteriores. Ceniza da mayor peso a esta memoria.
 
-La estela de pantalla es una acumulación gráfica independiente del mapa químico. Memoria controla ambas permanencias para relacionar lo que se ve con lo que perciben los agentes, pero borrar solo el framebuffer no elimina el rastro que leen. R sí borra ambos y reinicia agentes.
+El campo organiza el volumen, los vecinos forman grupos y la química conserva historia. Su combinación produce rutas distintas incluso bajo condiciones comunes.
 
-## Explorar durante el ensayo
+## Por qué sigue siendo una interpretación
 
-1. Mantén Latente y baja Vínculo: observa cómo disminuye la organización vecinal.
-2. Cambia a Corriente sin reiniciar: distingue el entorno cambiado de la adaptación progresiva de los agentes.
-3. Pasa a Huella y sube Memoria: busca caminos reforzados por el rastro anterior.
-4. Mantén W, suelta y observa el retraso. El gesto no fija posiciones.
-5. Marca Q una vez. La huida temporal modifica velocidad mediante steering; no aplica un impulso balístico.
+Q dispara un único golpe por pulsación y registra el tiempo de la acción humana. La mediana de los últimos cuatro intervalos válidos ajusta duraciones; no lee la canción ni retrasa el golpe a una cuadrícula. El ataque es breve, compacta hacia una banda y alterna la dirección lateral; un retorno corto permite distinguir el siguiente acento. Mantener W cambia el objetivo hacia una columna y carga en aproximadamente un pulso manual; soltarlo dispara una descarga proporcional a la carga. Mantener E ralentiza y corta la luz; soltarlo vuelve a mostrar el estado que continuaba calculándose lentamente. Perder foco o abrir un diálogo cancela la carga para evitar una descarga accidental.
 
-## Control humano
+El renderer orienta cada fragmento según su velocidad. Un golpe también acentúa luz y bandas ópticas, sin mover agentes por shader. La música se reproduce en un transporte separado: no hay FFT, detección de beats ni presets programados en la aplicación.
 
-`src/audio/player.js` solo reproduce y ofrece un reloj a la interfaz. `createSimulation.js` no importa audio. El score almacena tiempos para recordar entradas y no tiene scheduler. Las transiciones de estado solo ocurren al pulsar un pad, 1–4 o «Tocar…» en la partitura. La emergencia es autónoma; la conducción expresiva es humana.
+Espacio sostenida muestra HEY al fondo como escenografía de puntos. No es un comportamiento de los agentes: se compone fuera de su memoria y desaparece al soltar. La entrada siempre es humana. El deslizador Partículas cambia el número real de agentes entre 1.000 y 20.000; aplica al soltar y reinicia su estado, sin interrumpir el audio.
+
+Mantener V abre un campo común que alterna su dirección en subdivisiones del pulso marcado por Q, con límites de frecuencia. Cada agente calcula steering hacia esa dirección con fuerza acotada: vibra la materia, sin mover la cámara ni escribir posiciones. Cambiar el pulso conserva la fase del temblor. V por sí sola no dispara luz blanca. Al soltar, desaparece esa contribución y regresan los límites habituales.
+
+El documento SCORE_VISUAL.md propone momentos aproximados y posibles acciones fuera de la aplicación. Puedes adelantarte, esperar, sostener un estado o cambiar de decisión al escuchar y observar. La interfaz no incluye paneles de partitura ni instrucciones.
+
+## Demostración breve
+
+1. Muestra Riff y explica qué calcula un agente.
+2. Mantén W un segundo: compara la columna con el volumen inicial.
+3. Suelta W: la materia abre el espacio por steering; no cambia de posición de golpe.
+4. Pulsa Q, arrastra en diagonal y abre una grieta con Mayús. Mantén Espacio para una entrada HEY y suelta para retirarla.
+5. Mantén V para hacer temblar todo el volumen, suelta y compara. Mantén E y suelta para demostrar el contraste entre vacío y golpe.
+6. Pasa a Ceniza y aumenta Memoria; observa la historia del rastro.
+7. Explica cómo decidiste estos gestos al escuchar NOT OK.
